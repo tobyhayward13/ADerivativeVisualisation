@@ -88,9 +88,11 @@ make_function_vis <- function(a, b, fun, ylab) {
   return(plot)
 }
 
-make_derivative_vis <- function(a, b, fun, dfun = function(x){return(0)}, ylab) {
-  base_plot <- tibble(x = seq(a, b, (b-a)/100),
-                      actualdy = dfun(x)) %>% 
+make_derivative_vis <- function(a, b, fun, dfun = NA, ylab) {
+  if (suppressWarnings(is.na(dfun)))  base_plot.data = tibble(x = seq(a, b, (b-a)/100), actualdy = 0)
+  else base_plot.data = tibble(x = seq(a, b, (b-a)/100), actualdy = dfun(x))
+  
+  base_plot = base_plot.data %>% 
     ggplot(aes(x = x, y = actualdy)) +
     geom_line(col = 'red') +
     theme_minimal() +
@@ -111,9 +113,8 @@ make_derivative_vis <- function(a, b, fun, dfun = function(x){return(0)}, ylab) 
   # An appalling bodge of a test for no derivative function supplied.
   
   x = seq(a, b, (b-a)/100)
-  test_fun <- function(x){return(0)}
   
-  if (dfun(x) == test_fun(x)) {
+  if ((suppressWarnings(is.na(dfun)))) {
     dx = 0.01
     temp_tib <- tibble(x = seq(a, b, dx),
                        y = derivative_approx(a, b, dx, fun))
