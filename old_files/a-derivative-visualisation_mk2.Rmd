@@ -1,0 +1,256 @@
+---
+title: "A Visualisation of the Derivative."
+author: "Toby Hayward"
+date: "4/16/2022"
+output: 
+  html_document:
+    code_folding: show
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(mgcv)
+```
+
+
+Any calculus student encounters the derivative for the first time in their 3^rd^ to 2^nd^ to last year of high school. They'll learn that the derivative of a function is the rate of change at an instant in time, or graphically, the slope tangent line to the curve plotted by a function $f(x)$. \
+They'll learn that the derivative is a function which gives this number, given a point $x$, and that we can derive this equation through applying a series of rules such as the *Power Rule*, *Chain Rule*, *Quotient Rule*, or by simply remembering the corresponding derivative equation $f'(x)$ of $f(x)$ such as $\frac{d}{dx} sin(x) = cos(x)$. \
+\
+```{r echo=FALSE}
+
+f1x <- tibble(x = seq(-0.6, 3.1, 0.01),
+              y = -2.4 * x^5 + 3.7 * x^4 + 0.5 * x^3 + -1.9 * x^2 + 0.7 * x + 1 + 0.39 * x^6,
+              yi = -2.4 * 5 * x^4 + 3.7 * 4 * x^3 + 0.5 * 3 * x^2 + -1.9 * 2 * x + 0.7 + 0.39 * 6 * x^5) %>% 
+  pivot_longer(cols = c(y, yi), names_to = 'fun', values_to = 'res')
+
+f1x %>% ggplot(aes(x = x, colour = fun)) +
+  geom_line(aes(y = res)) +
+  geom_hline(yintercept = 0, col = 'darkgray') +
+  geom_vline(xintercept = 0, col = 'darkgray') +
+  theme_minimal() +
+  scale_y_continuous(breaks = seq(-10, 6)) +
+  theme(axis.title.y = element_text(margin = margin(r = 20)),
+        axis.title.x = element_text(margin = margin(t = 20))) +
+  labs(title = "Plot of Polynomial f(x) and it's Derivative f'(x)", y = 'y',
+       colour = '') +
+  scale_color_manual(values = c('black', 'red'), labels = c('f(x)', "f'(x)"))
+  
+
+
+```
+
+
+## The problem.
+Unfortunately for a lot of students, they go through their education without understanding where the derivative first came from. How did we derive the *Power Rule* and what does an instantaneous rate of change mean? \
+After studying further they'll eventually encounter the limit definition for a derivative, and begin to understand how reducing this little distance $dx$ to an infinitesimally small length, they can derive the true tangent line at a point on the curve, and hence it's slope. \
+\
+I propose the following visualisation of how this process works. This visualisation takes a function $f(x)$ and a distance $dx$ and estimates the tangent slope between two points on the curve $f(x)$ at a horizontal distance of $dx$. It then shows by reducing $dx$ how the function becomes a better and better approximation of the derivative function $f'(x)$, hence visualising the limit definition of a derivative. 
+
+```{r thefunct}
+derivative_approx <- function(a, b, dx, fun) {
+  # [a, b] = domain of the function
+  # dx = distance between the points x1, x2 to estimate dy.
+  # fun = the function f(x). 
+  x = seq(a, b, dx)
+  y = fun(x)
+  
+  dy = vector(mode = 'double', length(x)) #Initialising a vector to insert values of x into.
+  
+  for (i in 2:((b-a)/dx + 1)) {
+    dy[i] = y[i] - y[i-1]
+  }
+  
+  #Approximating endpoint with cubic linear predictor.
+  npred_points <- min(max(3, floor(length(x)/2)), 5)
+  dy[1] <- predict(lm(data = data.frame(y = dy[2:npred_points], x = x[2:npred_points]), y ~ poly(x, npred_points - 2)), newdata = data.frame(x = x[1]))
+  ans = dy/dx
+  
+  return(ans)
+  #ans = sequence of estimated slopes for a given x. 
+}
+```
+
+```{r vis_functs, class.source='fold-hide'}
+make_function_vis <- function(a, b, fun, ylab) {
+  plot <- tibble(x = seq(a, b, (b-a)/100),
+                 y = fun(x)) %>% 
+    ggplot(aes(x = x, y = y)) +
+    geom_line() + 
+    labs(title = sprintf('Plot of f(x) against x where f(x) = %s', ylab),
+         y = ylab) +
+    theme_minimal() +
+    theme(axis.title.y = element_text(margin = margin(r = 20)),
+          axis.title.x = element_text(margin = margin(t = 20))) +
+    geom_hline(yintercept = 0, col = 'darkgray') +
+    geom_vline(xintercept = 0, col = 'darkgray')
+    
+  return(plot)
+}
+
+make_derivative_vis <- function(a, b, fun, dfun = function(x){return(0)}, ylab) {
+  base_plot <- tibble(x = seq(a, b, (b-a)/100),
+                      actualdy = dfun(x)) %>% 
+    ggplot(aes(x = x, y = actualdy)) +
+    geom_line(col = 'red') +
+    theme_minimal() +
+    theme(axis.title.y = element_text(margin = margin(r = 20)),
+          axis.title.x = element_text(margin = margin(t = 20))) +
+    labs(title = sprintf("f'(x) and approximates against x where f(x) = %s", ylab),
+         y = "f'(x)") +
+    geom_hline(yintercept = 0, col = 'darkgray') +
+    geom_vline(xintercept = 0, col = 'darkgray')
+  
+  for (dx in seq(0.1, 1, 0.1)) {
+    temp_tib <- tibble(x = seq(a, b, dx),
+                       y = derivative_approx(a, b, dx, fun))
+    base_plot <- base_plot +
+      geom_line(data = temp_tib, aes(x = x, y = y), alpha = 1 - dx)
+  }
+  
+  # An appalling bodge of a test for no derivative function supplied.
+  
+  x = seq(a, b, (b-a)/100)
+  test_fun <- function(x){return(0)}
+  
+  if (dfun(x) == test_fun(x)) {
+    dx = 0.01
+    temp_tib <- tibble(x = seq(a, b, dx),
+                       y = derivative_approx(a, b, dx, fun))
+    print(temp_tib)
+    base_plot <- base_plot +
+      geom_line(data = temp_tib, aes(x = x, y = predict(gam(data = temp_tib, y ~ s(x)))), col = 'blue')
+  }
+  
+  return(base_plot)
+}
+
+```
+
+```{r vis1, fig.show='hold', out.width='50%', dpi=300}
+f_name = 'x^2'
+
+f <- function(x) {
+  return(x^2)
+}
+df <- function(x) {
+  return(2 * x)
+}
+
+a = -2; b = 2
+
+p1a <- make_function_vis(a, b, f, f_name)
+p1a
+
+p1b <- make_derivative_vis(a, b, f, df, f_name)
+p1b
+```
+
+```{r vis2, fig.show='hold', out.width='50%', dpi=300}
+f_name = 'x^5 + 2x^4'
+
+f <- function(x) {
+  return(x^5+2*x^4)
+}
+df <- function(x) {
+  return(5 * x^4 + 8 * x^3)
+}
+
+a = -2; b = 1
+
+p2a <- make_function_vis(a, b, f, f_name)
+p2a
+
+p2b <- make_derivative_vis(a, b, f, df, f_name)
+p2b
+```
+
+
+```{r vis3, fig.show='hold', out.width='50%', dpi=300}
+f_name = 'sin(x)'
+
+f <- function(x) {
+  return(sin(x))
+}
+df <- function(x) {
+  return(cos(x))
+}
+
+a = -2; b = 8
+
+p3a <- make_function_vis(a, b, f, f_name)
+p3a
+
+p3b <- make_derivative_vis(a, b, f, df, f_name)
+p3b
+```
+
+#### Above, notice that the darker the line gets, the closer the approximation is which is proportional to the distance of $dx$. What is important here is that in the calculation to get those black lines, **at no point did we use the actual derivative function to determine the black lines**. Therefore showing the brilliance of the limit definition of a derivative. \
+~~The only exception was the starting point. This was a lazy decision by me to arrive at an approximating the first term of the derivative function faster, but I hope it is still obvious that the algorithm works to approximate the derivative. This can be solved by simply plotting the line and ignoring the first term.~~
+\
+In this new document, I used a linear predictor on the following points (between 1 and 5 points) to determine the start point. This in my mind is almost like finishing the curve by eyeballing the line (as a human) and hence I thought this method was appropriate. The best thing about it is it doesn't utilise the actual derivative function at all! This is clearly outlined in the derivative approximation code above; note that the derivative function is only used in the comparison graph. \
+If I were to come back to this however I would solve the trailing ends due to the *dx* not being small enough to fit between the end point and the previous estimation.
+\
+\
+
+## An estimation of a derivative of which we do not know.
+
+I also wanted to use this opportunity to use this algorithm to visualise complex derivatives, and then fit a smoother to create a "local" derivative function. 
+
+$$f(x) = log(\frac{x+4}{5})\times\frac{sin(x+4)}{(x+4)^2}$$
+
+```{r complex_vis1, fig.show='hold', out.width='50%', dpi=300} 
+f_name = 'ln((x+4)/5)*sin(x+4)/((x+4)^2)'
+
+f <- function(x) {
+  return(log((x+4)/5)*sin(x+4)/((x+4)^2))
+}
+
+a = 0; b = 4
+
+p4a <- make_function_vis(a, b, f, f_name)
+p4a
+
+p4b <- make_derivative_vis(a, b, f, ylab = f_name)
+p4b
+```
+
+$$f(x) = tan(sin(cos(x^2+x)))$$
+
+```{r complex_vis2, fig.show='hold', out.width='50%', dpi=300} 
+f_name = 'tan(sin(cos(x^2 + x)))'
+
+f <- function(x) {
+  return(tan(sin(cos(x^2 + x))))
+}
+
+a = -2; b = 3
+
+p5a <- make_function_vis(a, b, f, f_name)
+p5a
+
+p5b <- make_derivative_vis(a, b, f, ylab = f_name)
+p5b
+```
+
+$$f(x) = log(\frac{\sqrt{x^2+1}}{x+3})$$
+
+```{r complex_vis3, fig.show='hold', out.width='50%', dpi=300} 
+f_name = 'ln(sqrt((x^2+1)/(x+3)))'
+
+f <- function(x) {
+  return(log(sqrt((x^2+1)/(x+3))))
+}
+
+a = -2; b = 5
+
+p6a <- make_function_vis(a, b, f, f_name)
+p6a
+
+p6b <- make_derivative_vis(a, b, f, ylab = f_name)
+p6b
+```
+
+
+
+Again the algorithm performs poorly because we have locked our *dx* to a size of between 0.1 and 1. The blue line is fit to a far smaller distance and with a smoother therefore it looks really nice. Lots of turns in the function seem to throw the algorithm off and it performs rather well, even for small dx, for "less-interesting" polynomials". It also seems to underestimate the function when the derivative is increasing and overestimate it when it is decreasing. This is expected and as simple result of the way we calculated the derivative.
